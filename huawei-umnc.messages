@@ -1,0 +1,657 @@
+#! /bin/bash
+
+lang=`echo $LANG | cut -b 1,2`
+
+#======================================================================
+show_message() {
+
+case $1 in
+##############
+SHOW_USAGE)############################################################
+##############
+case $lang in
+
+ru)
+cat <<EOFUSAGE
+huawei-umnc - Утилита для управления usb модемами в режиме сетевой карты от huawei.
+
+Используются следующие опции командной строки:
+				
+ -sa : Вывести все значения статуса устройства.
+				
+ -sc : Вывести все значения статуса устройства в виде кодов.
+				
+ -r  : Перезагрузка устройства.
+				
+ -of : Отключение мобильных данных.
+				
+ -on : Включение мобильных данных.
+				
+ -m  : Мониторинг состояния подключения.
+				
+ -v --version : Версия скрипта.
+				
+ -h --help: Показать справку и выйти.
+				
+Пример: huawei-umnc -i enp3s0
+
+EOFUSAGE
+;;
+
+uk)
+cat <<EOFUSAGE
+huawei-umnc - Утиліта для управління usb модемами в режимі сетевої карти від huawei.
+
+Використовуються наступні опції командного рядка:
+				
+ -sa : Вивести всі значення статусу пристрою.
+				
+ -sс : Вивести всі значення статусу пристрою у вигляді кодів.
+				
+ -r  : Перезавантаження пристрою.
+				
+ -of : Відключення мобільних даних.
+				
+ -on : Включення мобільних даних.
+				
+ -m  : Моніторинг стану підключення.
+				
+ -v --version : Версія скрипта.
+				
+ -h --help : Показати довідку і вийти.
+				
+Приклад: huawei-umnc -sc enp3s0
+
+EOFUSAGE
+;;
+
+*)
+cat << EOFUSAGE
+huawei-umnc - Utility for managing usb modems in network card mode from huawei.
+
+Use the following command line options:
+				
+ -sa : Print all device status values.
+				
+ -sс : Print all device status values as codes.
+				
+ -r  : Device reboot.
+				
+ -of : Disable mobile data.
+				
+ -on : The inclusion of mobile data.
+				
+ -m  : Connection status monitoring.
+				
+ -v --version : Version of the script.
+				
+ -h --help : Show help and exit.
+				
+Example: huawei-umnc -sc enp3s0
+
+EOFUSAGE
+;;
+esac
+;;
+
+#############
+CURRENT_VERSION)
+#############
+case $lang in
+  ru) echo -e "Версия скрипта ${FC_4}${CURRENT_VERSION}${FC_0}";;
+  uk) echo -e "Версія скрипта ${FC_4}${CURRENT_VERSION}${FC_0}";;
+  *)  echo -e "Script version ${FC_4}${CURRENT_VERSION}${FC_0}";;
+esac
+;;
+
+################
+FILE_NOT_FOUND*)#######################################################
+################
+case $lang in
+  ru) echo -e "${FC_2}Ошибка:${FC_0} Файл ${FC_3}$2${FC_0} не найден!";;
+  uk) echo -e "${FC_2}Помилка:${FC_0} Файл ${FC_3}$2${FC_0} не знайдено!";;
+  *)  echo -e "${FC_2}ERROR:${FC_0} File ${FC_3}$2${FC_0} not found!";;
+esac
+;;
+
+###############
+UNKNOWN_ARG)##########################################################
+###############
+case $lang in
+  ru) echo -e "${FC_2}Ошибка:${FC_0} Неизвестный аргумент ${FC_3}$2${FC_0}";;
+  uk) echo -e "${FC_2}Помилка:${FC_0} Невідомий аргумент ${FC_3}$2${FC_0}";;
+  *)  echo -e "${FC_2}ERROR:${FC_0} Unknown argement ${FC_3}$2${FC_0}";;
+esac
+;;
+
+###############
+VAR_NOT_SET*)##########################################################
+###############
+case $lang in
+  ru) echo -e "${FC_2}Ошибка:${FC_0} Переменная ${FC_3}$2${FC_0} не установлена";;
+  uk) echo -e "${FC_2}Помилка:${FC_0} Змінна ${FC_3}$2${FC_0} не встановлена";;
+  *)  echo -e "${FC_2}ERROR:${FC_0} Variable ${FC_3}$2${FC_0} not set";;
+esac
+;;
+
+###########
+WORK_DIR)##############################################################
+###########
+case $lang in
+  ru) echo -e "Изменение рабочей директории на ${FC_3}$2${FC_0}";;
+  uk) echo -e "Зміна робочої директорії на ${FC_3}$2${FC_0}";;
+  *)  echo -e "Changing working dir to ${FC_3}$2${FC_0}";;
+esac
+;;
+
+###########
+BT_DIR_NOT_WRITABLE)##############################################################
+###########
+case $lang in
+  ru) echo -e "${FC_2}Ошибка:${FC_0} Временная директория ${FC_3}$2${FC_0} не доступна для записи";;
+  uk) echo -e "${FC_2}Помилка:${FC_0} Тимчасова директорія ${FC_3}$2${FC_0} не доступна для запису";;
+  *)  echo -e "${FC_2}ERROR:${FC_0} Temp directory ${FC_3}$2${FC_0} is not writable";;
+esac
+;;
+
+############
+YES_OR_NO)##############################################################i
+###########
+case $lang in
+  ru) echo -e "Введите ${FC_3}yes${FC_0} или ${FC_3}no${FC_0}";;
+  uk) echo -e "Введіть ${FC_3}yes${FC_0} или ${FC_3}no${FC_0}";;
+  *)  echo -e "Please enter ${FC_3}yes${FC_0} or ${FC_3}no${FC_0}";;
+esac
+;;
+
+##########
+WRITING_TO*)##############################################################i
+############
+case $lang in
+  ru) echo -e "Файл записан в директорию ${FC_3}$2${FC_0}";;
+  uk) echo -e "Файл записаний в директорію ${FC_3}$2${FC_0}";;
+  *)  echo -e "File be written in ${FC_3}$2${FC_0}";;
+esac
+;;
+
+##########
+OVERWRITE_FILE*)###################################################
+############
+case $lang in
+  ru) echo -e "Перезаписать файл ${FC_3}$2${FC_0}?";;
+  uk) echo -e "Перезаписати файл ${FC_3}$2${FC_0}?";;
+  *)  echo -e "Overwrite the file ${FC_3}$2${FC_0}?";;
+esac
+;;
+
+##########
+FAILED_TO_CREATE_DIR*)###################################################
+############
+case $lang in
+  ru) echo -e "${FC_2}Ошибка:${FC_0} Не удалось создать каталог ${FC_3}$2${FC_0}";;
+  uk) echo -e "${FC_2}Помилка:${FC_0} Не вдалося створити каталог ${FC_3}$2${FC_0}";;
+  *)  echo -e "${FC_2}ERROR:${FC_0} Failed to create directory ${FC_3}$2${FC_0}";;
+esac
+;;
+
+##########
+NOT_FOUND_CONFIG*)###################################################
+############
+case $lang in
+  ru) echo -e "${FC_2}Ошибка:${FC_0} Не найден конфигурационный файл ${FC_3}$2${FC_0}";;
+  uk) echo -e "${FC_2}Помилка:${FC_0} Не знайдено конфігураційний файл ${FC_3}$2${FC_0}";;
+  *)  echo -e "${FC_2}ERROR:${FC_0} Not found config file ${FC_3}$2${FC_0}";;
+esac
+;;
+
+##########
+NOT_SPECIFIED_PARAMETER*)###################################################
+############
+case $lang in
+  ru) echo -e "${FC_2}Ошибка:${FC_0} Не указан параметр ${FC_3}$2${FC_0}";;
+  uk) echo -e "${FC_2}Помилка:${FC_0} Не вказано параметр ${FC_3}$2${FC_0}";;
+  *)  echo -e "${FC_2}ERROR:${FC_0} Not specified parameter ${FC_3}$2${FC_0}";;
+esac
+;;
+
+#############
+DIRECTORY_NOT_FOUND*)
+#############
+case $lang in
+  ru) echo -e "${FC_2}Ошибка:${FC_0} Каталог ${FC_3}$2${FC_0} не найден";;
+  uk) echo -e "${FC_2}Помилка:${FC_0} Каталог ${FC_3}$2${FC_0} не знайдено";;
+  *)  echo -e "${FC_2}ERROR:${FC_0} Directory ${FC_3}$2${FC_0} not found";;
+esac
+;;
+
+################
+FILE_NOT_FOUND*)
+################
+case $lang in
+  ru) echo -e "${FC_2}Ошибка:${FC_0} Файл ${FC_2}$2${FC_0} не найден";;
+  uk) echo -e "${FC_2}Помилка:${FC_0} Файл ${FC_2}$2${FC_0} не знайдено";;
+  *)  echo -e "${FC_2}ERROR:${FC_0} File ${FC_2}$2${FC_0} not found";;
+esac
+;;
+
+################
+PING_HOST*)
+################
+case $lang in
+  ru) echo -e "Проверка доступности хоста: ${FC_3}$2${FC_0}";;
+  uk) echo -e "Перевірка доступності хоста: ${FC_3}$2${FC_0}";;
+  *)  echo -e "Check host availability: ${FC_3}$2${FC_0}";;
+esac
+;;
+
+################
+NOT_ACCESS_HOST*)
+################
+case $lang in
+  ru) echo -e "${FC_2}Ошибка:${FC_0} Не удается получить доступ к хосту ${FC_3}$2${FC_0}";;
+  uk) echo -e "${FC_2}Помилка:${FC_0} Неможливо отримати доступ до хосту ${FC_3}$2${FC_0}";;
+  *)  echo -e "${FC_2}ERROR:${FC_0} Can not access the host ${FC_3}$2${FC_0}";;
+esac
+;;
+
+################
+OK)
+################
+case $lang in
+  ru) echo -e "${FC_4}... хорошо${FC_0}";;
+  uk) echo -e "${FC_4}... добре${FC_0}";;
+  *)  echo -e "${FC_4}... OK${FC_0}";;
+esac
+;;
+
+################
+PACKAGE_NOT_INSTALLED*)
+################
+case $lang in
+  ru) echo -e "${FC_2}Ошибка:${FC_0} Пакет ${FC_4}$2${FC_0} не установлен!";;
+  uk) echo -e "${FC_2}Помилка:${FC_0} Пакет ${FC_4}$2${FC_0} не встановлений!";;
+  *)  echo -e "${FC_2}ERROR:${FC_0} Package of ${FC_4}$2${FC_0} is not installed!";;
+esac
+;;
+
+################
+FAILED_EXECUTE_COMMAND*)
+################
+case $lang in
+  ru) echo -e "${FC_2}Ошибка:${FC_4} Не удалось выполнить команду ${FC_3}$2${FC_0}";;
+  uk) echo -e "${FC_2}Помилка:${FC_4} Не вдалося виконати команду ${FC_3}$2${FC_0}";;
+  *)  echo -e "${FC_2}ERROR:${FC_4} Failed to execute the command ${FC_3}$2${FC_0}";;
+esac
+;;
+
+################
+NOT_RIGHT_VALUE)
+################
+case $lang in
+  ru) echo -e "${FC_2}Значение указано не верно!${FC_0}";;
+  uk) echo -e "${FC_2}Значення вказано не вірно!${FC_0}";;
+  *)  echo -e "${FC_2}The value is not correct!${FC_0}";;
+esac
+;;
+
+################
+I_M_NOT_ROOT)
+################
+case $lang in
+  ru) echo -e "${FC_2}Ошибка:${FC_0} Необходимы права суперпользователя (root)";;
+  uk) echo -e "${FC_2}Помилка:${FC_0} Необхідні права суперкористувача (root)";;
+  *)  echo -e "${FC_2}ERROR:${FC_0} You need to be (root)";;
+esac;;
+
+################
+MAKING_CHANGES_TO_FILE*)
+################
+case $lang in
+  ru) echo -e "${FC_4}Внесение изменений в ${FC_3}$2${FC_0}";;
+  uk) echo -e "${FC_4}Внесення змін до ${FC_3}$2${FC_0}";;
+  *)  echo -e "${FC_4}Making changes to the ${FC_3}$2${FC_0}";;
+esac;;
+
+################
+CONTINUE_PRESS_ANY_KEY)
+################
+case $lang in
+  ru) echo -e "${FC_4}Для продолжения нажмите любую клавишу${FC_0}";;
+  uk) echo -e "${FC_4}Для продовження натисніть будь-яку клавішу${FC_0}";;
+  *)  echo -e "${FC_4}To continue, press any key${FC_0}";;
+esac;;
+
+################
+SYSTEM_NOT_NETWORK_INTERFACE*)
+################
+case $lang in
+  ru) echo -e "${FC_2}Ошибка:${FC_4} Система не имеет сетевого интерфейса ${FC_3}$2${FC_0}";;
+  uk) echo -e "${FC_2}Помилка:${FC_4} У системі немає мережевого інтерфейсу ${FC_3}$2${FC_0}";;
+  *)  echo -e "${FC_2}ERROR:${FC_4} The system does not have a network interface ${FC_3}$2${FC_0}";;
+esac;;
+
+################
+INTERFACE_STATE_DOWN*)
+################
+case $lang in
+  ru) echo -e "${FC_2}Ошибка: ${FC_4}Интерфейс ${FC_3}$2${FC_0} находится в состоянии DOWN";;
+  uk) echo -e "${FC_2}Помилка: ${FC_4}Інтерфейс ${FC_3}$2${FC_0} знаходиться в стані DOWN";;
+  *)  echo -e "${FC_2}ERROR: ${FC_4} Interface ${FC_3}$2${FC_0} is in the DOWN state";;
+esac;;
+
+################
+CONNECTION)
+################
+case $lang in
+  ru) echo -e "${FC_7}соединение${FC_0}";;
+  uk) echo -e "${FC_7}з'єднання${FC_0}";;
+  *)  echo -e "${FC_7}connection${FC_0}";;
+esac;;
+
+################
+CONNECTED)
+################
+case $lang in
+  ru) echo -e "подключен";;
+  uk) echo -e "підключено";;
+  *)  echo -e "connected";;
+esac;;
+
+################
+DISCONNECTED)
+################
+case $lang in
+  ru) echo -e "${FC_2}отключено${FC_0}";;
+  uk) echo -e "${FC_2}відключено${FC_0}";;
+  *)  echo -e "${FC_2}desconected${FC_0}";;
+esac;;
+
+################
+DISCONNECTION)
+################
+case $lang in
+  ru) echo -e "отключение";;
+  uk) echo -e "відключення";;
+  *)  echo -e "disconnection";;
+esac;;
+
+################
+CONNECTION_FAILED)
+################
+case $lang in
+  ru) echo -e "${FC_2}соединение не удалось${FC_0}";;
+  uk) echo -e "${FC_2}з'єднання не вдалося${FC_0}";;
+  *)  echo -e "${FC_2}connection failed${FC_0}";;
+esac;;
+
+################
+NOT_SERVICED)
+################
+case $lang in
+  ru) echo -e "${FC_2}не обслуживается${FC_0}";;
+  uk) echo -e "${FC_2}не обслуговується${FC_0}";;
+  *)  echo -e "${FC_2}not serviced${FC_0}";;
+esac;;
+
+################
+WEAK_SIGNAL)
+################
+case $lang in
+  ru) echo -e "${FC_2}нет связи (слабый сигнал)${FC_0}";;
+  uk) echo -e "${FC_2}немає зв'язку (слабкий сигнал)${FC_0}";;
+  *)  echo -e "${FC_2}no connection (weak signal)${FC_0}";;
+esac;;
+
+################
+CONNECTION_ERROR)
+################
+case $lang in
+  ru) echo -e "${FC_2}ошибка подключения${FC_0}";;
+  uk) echo -e "${FC_2}помилка підключення${FC_0}";;
+  *)  echo -e "${FC_2}connection error${FC_0}";;
+esac;;
+
+################
+SIM_STATUS_0)
+################
+case $lang in
+ru) echo -e "${FC_2}SIM-карта отсутствует или неверна${FC_0}";;
+uk) echo -e "${FC_2}SIM-карта відсутня або неправильна${FC_0}";;
+*)  echo -e "${FC_2}SIM card is missing or incorrect${FC_0}";;
+esac;;
+
+################
+SIM_STATUS_1)
+################
+case $lang in
+  ru) echo -e "правильная сим-карта";;
+  uk) echo -e "правильна сім-карта";;
+  *)  echo -e "correct sim card";;
+esac;;
+
+################
+SIM_STATUS_2)
+################
+case $lang in
+ru) echo -e "${FC_2}неправильная SIM-карта для коммутации каналов (CS)${FC_0}";;
+uk) echo -e "${FC_2}неправильна SIM-карта для комутації посилань (CS)${FC_0}";;
+*)  echo -e "${FC_2}incorrect SIM card for link commutation (CS)${FC_0}";;
+esac;;
+
+################
+SIM_STATUS_3)
+################
+case $lang in
+ru) echo -e "${FC_2}неправильная SIM-карта для коммутации пакетов (PS)${FC_0}";;
+uk) echo -e "${FC_2}неправильна SIM-карта для комутації пакетів (PS)${FC_0}";;
+*)  echo -e "${FC_2}incorrect SIM card for packet commutation (PS)${FC_0}";;
+esac;;
+
+################
+SIM_STATUS_4)
+################
+case $lang in
+ru) echo -e "${FC_2}неверная SIM-карта для переключения каналов и пакетов (PS + CS)${FC_0}";;
+uk) echo -e "${FC_2}неправильна SIM-карта для переключення зв'язку та пакетів (PS + CS)${FC_0}";;
+*)  echo -e "${FC_2}incorrect SIM card for link and packet switching (PS + CS)${FC_0}";;
+esac;;
+
+################
+SIM_STATUS_255)
+################
+case $lang in
+  ru) echo -e "${FC_2}нет сим-карты${FC_0}";;
+  uk) echo -e "${FC_2}немає SIM-карти${FC_0}";;
+  *)  echo -e "${FC_2}no SIM card${FC_0}";;
+esac;;
+
+################
+WRONG_PROFILE)
+################
+case $lang in
+  ru) echo -e "${FC_2}ошибка соединения (неправильный профиль)${FC_0}";;
+  uk) echo -e "${FC_2}помилка підключення (неправильний профіль)${FC_0}";;
+  *)  echo -e "${FC_2}connection error (network access denied)${FC_0}";;
+esac;;
+
+################
+NETWORK_ACCESS_DENIED)
+################
+case $lang in
+  ru) echo -e "${FC_2}ошибка подключения (доступ к сети запрещен)${FC_0}";;
+  uk) echo -e "${FC_2}помилка підключення (доступ до мережі заборонено)${FC_0}";;
+  *)  echo -e "${FC_2}connection error (wrong profile)${FC_0}";;
+esac;;
+
+################
+NO_ROAMING)
+################
+case $lang in
+  ru) echo -e "${FC_2}нет соединения (нет роуминга)${FC_0}";;
+  uk) echo -e "${FC_2}немає зв'язку (немає роумінгу)${FC_0}";;
+  *)  echo -e "${FC_2}no connection (no roaming)${FC_0}";;
+esac;;
+
+################
+NO_AUTOMATIC_ROAMING_CONNECTION)
+################
+case $lang in
+  ru) echo -e "${FC_2}нет автоматического роумингового соединения${FC_0}";;
+  uk) echo -e "${FC_2}немає автоматичного роумінгового з'єднання${FC_0}";;
+  *)  echo -e "${FC_2}no automatic roaming connection${FC_0}";;
+esac;;
+
+################
+NO_AUTOMATIC_CONNECTION)
+################
+case $lang in
+  ru) echo -e "${FC_2}нет автоматического подключения${FC_0}";;
+  uk) echo -e "${FC_2}немає автоматичного підключення${FC_0}";;
+  *)  echo -e "${FC_2}no automatic connection${FC_0}";;
+esac;;
+
+################
+NO_RECONNECTION)
+################
+case $lang in
+  ru) echo -e "${FC_2}нет переподключения${FC_0}";;
+  uk) echo -e "${FC_2}відсутність повторного підключення${FC_0}";;
+  *)  echo -e "${FC_2}no reconnection${FC_0}";;
+esac;;
+
+################
+NO_ROAMING_RECONNECTION)
+################
+case $lang in
+  ru) echo -e "${FC_2}отсутствие повторного подключения к роумингу${FC_0}";;
+  uk) echo -e "${FC_2}відсутність повторного підключення до роумінгу${FC_0}";;
+  *)  echo -e "${FC_2}no roaming reconnection${FC_0}";;
+esac;;
+
+################
+DATA_TRANSMISSION_LIMIT_EXCEEDED)
+################
+case $lang in
+  ru) echo -e "${FC_2}соединение прервано, превышен лимит передачи данных${FC_0}";;
+  uk) echo -e "${FC_2}з'єднання перервано, ліміт передачі даних перевищений${FC_0}";;
+  *)  echo -e "${FC_2}connection interrupted, data transmission limit exceeded${FC_0}";;
+esac;;
+
+################
+SENDING_REBOOT_COMMAND*)
+################
+case $lang in
+  ru) echo -e "${FC_3}Отправка команды перезагрузки на ${FC_4}$2${FC_0}";;
+  uk) echo -e "${FC_3}Надсилання команди перезавантаження для ${FC_4}$2${FC_0}";;
+  *)  echo -e "${FC_3}Sending reboot command for ${FC_4}$2${FC_0}";;
+esac;;
+
+################
+ERROR_EXECUTING_COMMAND*)
+################
+case $lang in
+  ru) echo -e "Ошибка ${FC_2}$2${FC_0} при выполнении команды";;
+  uk) echo -e "Помилка ${FC_2}$2${FC_0} при виконанні команди";;
+  *)  echo -e "Error ${FC_2}$2${FC_0} when executing a command";;
+esac;;
+
+################
+ERROR_NOT_GATEWAY)
+################
+case $lang in
+  ru) echo -e "${FC_2}Ошибка не указан шлюз${FC_0}";;
+  uk) echo -e "${FC_2}Помилка шлюзу не вказана${FC_0}";;
+  *)  echo -e "${FC_2}Error not specified gateway${FC_0}";;
+esac;;
+
+################
+COMMAND_COMPLETED_SUCCESSFULLY)
+################
+case $lang in
+  ru) echo -e "${FC_3}Команда успешно выполнена${FC_0}";;
+  uk) echo -e "${FC_3}Команда успішно виконана${FC_0}";;
+  *)  echo -e "${FC_3}Command completed successfully${FC_0}";;
+esac;;
+
+################
+SENT_СOMMAND_DISABLE_MOBILE_DATA*)
+################
+case $lang in
+  ru) echo -e "${FC_3}Отправлена команда отключения мобильных данных на ${FC_4}$2${FC_0}";;
+  uk) echo -e "${FC_3}Відправлена команда відключення мобільних даних на ${FC_4}$2${FC_0}";;
+  *)  echo -e "${FC_3}Command sent to disable mobile data at ${FC_4}$2${FC_0}";;
+esac;;
+
+################
+SENT_СOMMAND_ON_MOBILE_DATA*)
+################
+case $lang in
+  ru) echo -e "${FC_3}Отправлена команда включения мобильных данных на ${FC_4}$2${FC_0}";;
+  uk) echo -e "${FC_3}Відправлена команда включення мобільних даних на ${FC_4}$2${FC_0}";;
+  *)  echo -e "${FC_3}A command to enable mobile data to ${FC_4}$2${FC_0}";;
+esac;;
+
+################
+FAILED_PLAY_SOUND_EVENT)
+################
+case $lang in
+  ru) echo -e "Не удалось воспроизвести звуковое событие ${FC_3}$2${FC_0}";;
+  uk) echo -e "Не вдалося відтворити звукову подію ${FC_3}$2${FC_0}";;
+  *)  echo -e "Failed to play sound event ${FC_3}$2${FC_0}";;
+esac;;
+
+################
+ALL_DEVICE_STATUS*)
+################
+# Функуия для разбития строки на переменные
+break_string_values "${@}"
+case $lang in
+  ru)
+  echo -e "${FC_4}Значения статуса устройства: ${FC_3}${VAR1}${FC_0}
+  Состояние мобильной передачи данных:       ${FC_3}${VAR2}${FC_0} (${VAR3})
+  Статус SIM карты:                          ${FC_3}${VAR4}${FC_0} (${VAR5})
+  Состояние блокировки SIM (0 - не заблок.): ${FC_3}${VAR6}${FC_0}
+  Значок уровня сигнала (0-5):               ${FC_3}${VAR7}${FC_0} (${VAR8})
+  Первичный ДНС:                             ${FC_3}${VAR9}${FC_0}
+  Вторичный ДНС:                             ${FC_3}${VAR10}${FC_0}
+  Статус сервиса (2 - услуга доступна):      ${FC_3}${VAR11}${FC_0}
+  Статус роуминга:                           ${FC_3}${VAR12}${FC_0}
+  Текущий тип сети:                          ${FC_3}${VAR13}${FC_0} (${VAR14})
+  Текущий тип сети Ex:                       ${FC_3}${VAR15}${FC_0} (${VAR16})
+  ";;
+
+  uk)
+  echo -e "${FC_4}Значення статусу пристрою: ${FC_3}${VAR1}${FC_0}
+  Стан мобільної передачі даних:          ${FC_3}${VAR2}${FC_0} (${VAR3})
+  Статус SIM карти:                       ${FC_3}${VAR4}${FC_0} (${VAR5})
+  Статус блокування SIM (0 - не заблок.): ${FC_3}${VAR6}${FC_0}
+  Значок рівня сигналу (0-5):             ${FC_3}${VAR7}${FC_0} (${VAR8})
+  Первинний ДНС:                          ${FC_3}${VAR9}${FC_0}
+  Вторинний ДНС:                          ${FC_3}${VAR10}${FC_0}
+  Статус сервіса (2 - послуга доступна):  ${FC_3}${VAR11}${FC_0}
+  Статус роумінгу:                        ${FC_3}${VAR12}${FC_0}
+  Поточний тип мережі:                    ${FC_3}${VAR13}${FC_0} (${VAR14})
+  Поточний тип мережі Ex:                 ${FC_3}${VAR15}${FC_0} (${VAR16})
+  ";;
+
+  *)
+  echo -e "${FC_4}Device Status Values: ${FC_3}${VAR1}${FC_0}
+  Mobile data status:                        ${FC_3}${VAR2}${FC_0} (${VAR3})
+  SIM card status:                           ${FC_3}${VAR4}${FC_0} (${VAR5})
+  SIM lock status (0 - not blocked):         ${FC_3}${VAR6}${FC_0}
+  Signal Strength Icon (0-5):                ${FC_3}${VAR7}${FC_0} (${VAR8})
+  Primary Dns:                               ${FC_3}${VAR9}${FC_0}
+  Secondary Dns:                             ${FC_3}${VAR10}${FC_0}
+  Service status (2 - service is available): ${FC_3}${VAR11}${FC_0}
+  Roaming status:                            ${FC_3}${VAR12}${FC_0}
+  Current network type:                      ${FC_3}${VAR13}${FC_0} (${VAR14})
+  Current network type Ex:                   ${FC_3}${VAR15}${FC_0} (${VAR16})
+  ";;
+esac;;
+
+
+*)
+echo -e "Unknown string $1";
+exit 1
+esac
+}

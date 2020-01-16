@@ -1,0 +1,44 @@
+#!/bin/bash
+
+CURRENT_VERSION=0.0.0
+INSTALL_PREFIX=/usr
+BASE_NAME=`basename "$0"`
+CONFIG_FILE=/etc/${BASE_NAME}.conf
+PO_DIR="/usr/share/${BASE_NAME}"
+
+# Loading message file
+if [ -f "${PO_DIR}/$BASE_NAME.messages" ]; then
+   source "${PO_DIR}/$BASE_NAME.messages"
+else
+   case $lang in
+      ru) echo -e "\e[31mОшибка:\e[0m не найден файл $BASE_NAME.messages в '${PO_DIR}'!!!";;
+      uk) echo -e "\e[31mПомилка:\e[0m не знайдений файл $BASE_NAME.messages у '${PO_DIR}'!!!";;
+      *)  echo -e "\e[31mError:\e[0m file $BASE_NAME.messages not found in '${PO_DIR}'!!!";;
+   esac
+      exit 1
+fi
+
+if ! [ -f $CONFIG_FILE ]; then
+   show_message_log NOT_FOUND_CONFIG $CONFIG_FILE
+   exit 1
+else
+   source "$CONFIG_FILE"
+fi
+
+if [ -z ${LOG_PATH} ]; then
+   show_message_log VAR_NOT_SET "LOG_PATH"
+   exit 1
+fi
+
+if ! [ -f ${PO_DIR}/${BASE_NAME}.func ]; then
+   show_message_log FILE_NOT_FOUND ${PO_DIR}/${BASE_NAME}.func
+else
+   source ${PO_DIR}/${BASE_NAME}.func
+fi
+
+# Если не передали параметры то выведем help
+if [ -z $1 ]; then
+   set_options -h
+else
+   set_options $*
+fi

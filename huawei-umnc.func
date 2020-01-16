@@ -1,0 +1,855 @@
+#! /bin/bash
+
+#=======================================
+# Убрать из лога color scheme
+# Strip escape codes/sequences [$1: input, $2: target variable]
+function strip_escape_codes() {
+   local input="${1//\"/\\\"}" output="" i char within_code=0
+   for ((i=0; i < ${#input}; ++i)); do
+       # get current character
+       char="${input:i:1}"
+       # if we're currently within an escape code, check if end of
+       if (( ${within_code} == 1 )); then
+          # code is reached, i.e. if current character is a letter
+          case "${char}" in
+             [a-zA-Z]) within_code=0 ;;
+          # we're no longer within an escape code
+          esac
+             continue
+       fi
+       # if current character is '\e', we've reached an escape code
+       if [[ "${char}" == $'\e' ]]; then
+          # now we're within an escape code
+          within_code=1
+          continue
+       fi
+       # if none of the above applies, add current character to output
+       output+="${char}"
+   done
+   # assign output to target variable
+   eval "$2=\"${output}\""
+}
+
+#=======================================
+show_message_log(){
+  if ! [ -d ${LOG_PATH} ]; then
+     mkdir ${LOG_PATH}
+  fi
+  strip_escape_codes "$(show_message $*)" stripped
+  echo "$(date +%k:%M:%S): $stripped" >> ${LOG_PATH}/$(date +%Y.%m.%d)-${BASE_NAME}.log
+  show_message $*
+}
+
+#=======================================
+echo_log(){
+  if ! [ -d ${LOG_PATH} ]; then
+     mkdir ${LOG_PATH}
+  fi
+  strip_escape_codes "$*" stripped
+  echo "$(date +%k:%M:%S): $stripped" >> ${LOG_PATH}/$(date +%Y.%m.%d)-${BASE_NAME}.log
+  echo -e $*
+}
+
+#=======================================
+system_language() {
+  local UP_LANG_SELECT LANG_UTF8 STR_READ
+
+  PATH_INST=$1
+
+  if ! [ -f ~/.config/lang.conf  ]; then
+     while [ "${LIST_LANG}" = "${LIST_LANG#*$LANG_SELECT}" ] ; do
+           STR_READ=`echo "$(tput bold)$(tput setaf 2)Specify the required language: $(tput setaf 1) ${LIST_LANG} $(tput sgr0)"`
+           read -p "${STR_READ}" LANG_SELECT
+           if [ "${LIST_LANG}" = "${LIST_LANG#*$LANG_SELECT}" ]; then
+              echo "Incorrect value"
+           else
+              echo -e "LANG_SELECT=${LANG_SELECT}" > ~/.config/lang.conf
+              echo "OK"
+           fi
+     done
+  fi
+  source ~/.config/lang.conf
+}
+
+# Функция поиска в системе USB сетевых карт Huawei
+#===============================================
+find_huawei() {
+   local FIND_STR=`lsusb | grep -i net | grep Huawei | cut -d " " -f6 | sed "s|:|p|"`
+   # массив с найденными устройствами
+   FIND_HUAWEI=();
+   if ! [ -d /sys/class/net ]; then
+      exit 1;
+   fi
+   cd /sys/class/net
+   for file in * ; do
+       if [ ${file} != 'lo' ]; then
+          if [ -d ${file}/device ]; then
+             if [ -f ${file}/device/uevent ]; then
+                if ! [ -z `grep -i $FIND_STR ${file}/device/uevent` ]; then
+                   #echo "Found device ${file}"
+                   FIND_HUAWEI+=(${file});
+                fi
+             fi
+          fi
+       fi
+   done
+}
+
+#===============================================
+# Поиск шлюза выбранной сетевой карты
+find_dev_gateway() {
+   INTERFACE=$1;
+   echo `ip neigh show dev ${INTERFACE} | grep -E "REACHABLE|STALE|DELAY" | awk {'print $1'}`
+}
+
+#===============================================
+# Вернуть значение
+return_status_value() {
+  NAME_VALUE=$1;
+
+  local VALUE=$(echo "${StatusAll}" | grep '<'${NAME_VALUE}'>' | cut -d ">" -f2 | cut -d "<" -f1);
+  if [ -z "${VALUE}" ]; then
+     VALUE="-"
+  fi
+
+  eval ${NAME_VALUE}="${VALUE}";
+}
+
+#===============================================
+# Получим токин сессии
+get_token() {
+   GATEWAY_IP=$1
+   # Получаем данные
+   SesTokInfo=$(curl -s -X GET http://${GATEWAY_IP}/api/webserver/SesTokInfo);
+   sleep 1
+   # Получаем SesInfo
+   export SesInfo=$(echo "${SesTokInfo}" | grep SesInfo | cut -d ">" -f2 | cut -d "<" -f1);
+   # Получаем TokInfo
+   export TokInfo=$(echo "${SesTokInfo}" | grep TokInfo | cut -d ">" -f2 | cut -d "<" -f1);
+}
+
+#===============================================
+# Функция получения состояния мобильного соединения
+# Состояние мобильной передачи данных:
+#   902 - Отключено
+#   901 - Подключено
+#   900 - Подключение
+# Состояние Sim карты:
+#   255 - Сим карта отсутствует
+#   1   - Сим Карта установлена
+get_status() {
+   local GATEWAY_IP=$1
+   get_token ${GATEWAY_IP}
+
+   # Получим все значения состояния устройства
+   StatusAll=$(curl -s -X GET http://${GATEWAY_IP}/api/monitoring/status -H "Cookie: ${SesInfo}" -H "__RequestVerificationToken: ${TokInfo}");
+
+   # Состояние мобильной передачи данных
+   return_status_value "ConnectionStatus";
+
+   # Состояние Sim карты
+   return_status_value "SimStatus";
+
+   # Блокировка Сим карты
+   return_status_value "simlockStatus";
+
+   # Значок уровня сигнала
+   return_status_value "SignalIcon";
+
+   # Первинний Днс
+   return_status_value "PrimaryDns";
+
+   # Вторичный Днс
+   return_status_value "SecondaryDns";
+
+   # Статус сервиса
+   return_status_value "ServiceStatus";
+
+   # Статус роуминга
+   return_status_value "RoamingStatus";
+
+   # Текущий тип сети
+   return_status_value "CurrentNetworkType";
+
+   # Текущий тип сети Ex
+   return_status_value "CurrentNetworkTypeEx";
+}
+
+#========================
+# Вернуть текущий тип сети ввиде строки
+sting_current_network_type(){
+  local STATUS=$1
+  if [ "$STATUS" == "0" ]; then
+    show_message NOT_SERVICED
+  elif [ "$STATUS" == "1" ]; then
+    echo "(GSM)";
+  elif [ "$STATUS" == "2" ]; then
+    echo "(GPRS)"
+  elif [ "$STATUS" == "3" ]; then
+    echo "(EDGE)"
+  elif [ "$STATUS" == "4" ]; then
+    echo "(WCDMA)"
+  elif [ "$STATUS" == "5" ]; then
+    echo "(HSDPA)"
+  elif [ "$STATUS" == "6" ]; then
+    echo "(HSUPA)"
+  elif [ "$STATUS" == "7" ]; then
+    echo "(HSPA)"
+  elif [ "$STATUS" == "8" ]; then
+    echo "(TDSCDMA)"
+  elif [ "$STATUS" == "9" ]; then
+    echo "(HSPA+)"
+  elif [ "$STATUS" == "10" ]; then
+    echo "(EVDO rev. 0)"
+  elif [ "$STATUS" == "11" ]; then
+    echo "(EVDO rev. A)"
+  elif [ "$STATUS" == "12" ]; then
+    echo "(EVDO rev. B)"
+  elif [ "$STATUS" == "13" ]; then
+    echo "(1xRTT)"
+  elif [ "$STATUS" == "14" ]; then
+    echo "(UMB)"
+  elif [ "$STATUS" == "15" ]; then
+    echo "(1xEVDV)"
+  elif [ "$STATUS" == "16" ]; then
+    echo "(3xRTT)"
+  elif [ "$STATUS" == "17" ]; then
+    echo "(HSPA+64QAM)"
+  elif [ "$STATUS" == "18" ]; then
+    echo "(HSPA+MIMO)"
+  elif [ "$STATUS" == "19" ]; then
+    echo "(LTE)"
+  elif [ "$STATUS" == "21" ]; then
+    echo "(IS95A)"
+  elif [ "$STATUS" == "22" ]; then
+    echo "(IS95B)"
+  elif [ "$STATUS" == "23" ]; then
+    echo "(CDMA1x)"
+  elif [ "$STATUS" == "24" ]; then
+    echo "(EVDO rev. 0)"
+  elif [ "$STATUS" == "25" ]; then
+    echo "(EVDO rev. A)"
+  elif [ "$STATUS" == "26" ]; then
+    echo "(EVDO rev. B)"
+  elif [ "$STATUS" == "27" ]; then
+    echo "(Hybrydowa CDMA1x)"
+  elif [ "$STATUS" == "28" ]; then
+    echo "(Hybrydowa EVDO rev. 0)"
+  elif [ "$STATUS" == "29" ]; then
+    echo "(Hybrydowa EVDO rev. A)"
+  elif [ "$STATUS" == "30" ]; then
+    echo "(Hybrydowa EVDO rev. B)"
+  elif [ "$STATUS" == "31" ]; then
+    echo "(EHRPD rev. 0)"
+  elif [ "$STATUS" == "32" ]; then
+    echo "(EHRPD rev. A)"
+  elif [ "$STATUS" == "33" ]; then
+    echo "(EHRPD rev. B)"
+  elif [ "$STATUS" == "34" ]; then
+    echo "(Hybrydowa EHRPD rev. 0)"
+  elif [ "$STATUS" == "35" ]; then
+    echo "(Hybrydowa EHRPD rev. A)"
+  elif [ "$STATUS" == "36" ]; then
+    echo "(Hybrydowa EHRPD rev. B)"
+  elif [ "$STATUS" == "41" ]; then
+    echo "(WCDMA)"
+  elif [ "$STATUS" == "42" ]; then
+    echo "(HSDPA)"
+  elif [ "$STATUS" == "43" ]; then
+    echo "(HSUPA)"
+  elif [ "$STATUS" == "44" ]; then
+    echo "(HSPA)"
+  elif [ "$STATUS" == "45" ]; then
+    echo "(HSPA+)"
+  elif [ "$STATUS" == "46" ]; then
+    echo "(DC HSPA+)"
+  elif [ "$STATUS" == "61" ]; then
+    echo "(TD SCDMA)"
+  elif [ "$STATUS" == "62" ]; then
+    echo "(TD HSDPA)"
+  elif [ "$STATUS" == "63" ]; then
+    echo "(TD HSUPA)"
+  elif [ "$STATUS" == "64" ]; then
+    echo "(TD HSPA)"
+  elif [ "$STATUS" == "65" ]; then
+    echo "(TD HSPA+)"
+  elif [ "$STATUS" == "81" ]; then
+    echo "(802.16E)"
+  elif [ "$STATUS" == "101" ]; then
+    echo "(LTE)"
+  fi
+}
+
+#========================
+# Вернуть значение из массива
+return_value_array(){
+  local val=$1
+  shift
+  local array_val=(${@})
+  for i in ${array_val[@]}; do
+     if [ "$val" == "$i" ]; then
+        echo "$val"
+        break
+     fi
+  done
+}
+
+#========================
+# Функуия для разбития строки на переменные
+# Разделитель втроки |
+# Создаваемые переменные VAR1...VARx
+break_string_values() {
+   local NAME_VAR="VAR"
+
+   # удалим первое значение
+   local STR_VAR=`echo -e "${@}" | sed -e "s|$1||"`
+   IFS='|'
+   N=0
+   for V in ${STR_VAR}; do
+       let N=${N}+1
+       eval "${NAME_VAR}${N}"='''`echo -e "${V}" | sed -e 's/^[[:space:]]*//'`'''
+   done
+   IFS=${IFS_OLD}
+}
+
+#========================
+# Уровень сигнала
+signal_strength() {
+   local let STRENGTH=$1
+   local REZ
+   if [ -z $STRENGTH ]; then
+      exit;
+   fi
+   for ((N=1; N <= $STRENGTH ; N++)); do
+     local REZ="${REZ}#"
+   done
+   if [ 4 -gt $STRENGTH ]; then
+      echo -e ${FC_2}$REZ${FC_0}
+    else
+      echo -e ${FC_6}$REZ${FC_0}
+   fi
+}
+
+#========================
+# Вернуть статус ввиде строки
+sting_connection_status(){
+  local STATUS=$1
+
+  if [ "$STATUS" == "$(return_value_array "${STATUS}" "2" "3" "5" "8" "20" "21" "23" "27" "28" "29" "30" "31" "32" "33" "65538" "65539" "65567" "65568" "131073" "131074" "131076" "131078" )" ]; then
+    show_message WRONG_PROFILE
+  elif [ "$STATUS" == "$(return_value_array "${STATUS}" "7" "11" "14" "37" "131079" "131080" "131081" "131082" "131083" "131084" "131085" "131086" "131087" "131088" "131089" )" ]; then
+       show_message NETWORK_ACCESS_DENIED
+  elif [ "$STATUS" == "12" -o "$STATUS" == "13" ]; then
+       show_message NO_ROAMING
+  elif [ "$STATUS" == "112" ]; then
+       show_message NO_AUTOMATIC_CONNECTION
+  elif [ "$STATUS" == "113" ]; then
+       show_message NO_AUTOMATIC_ROAMING_CONNECTION
+  elif [ "$STATUS" == "114" ]; then
+       show_message NO_RECONNECTION
+  elif [ "$STATUS" == "115" ]; then
+       show_message NO_ROAMING_RECONNECTION
+  elif [ "$STATUS" == "201" ]; then
+       show_message DATA_TRANSMISSION_LIMIT_EXCEEDED
+  elif [ "$STATUS" == "900" ]; then
+    show_message CONNECTION
+  elif [ "$STATUS" == "901" ]; then
+    show_message CONNECTED
+  elif [ "$STATUS" == "902" ]; then
+    show_message DISCONNECTED
+  elif [ "$STATUS" == "903" ]; then
+    show_message DISCONNECTION
+  elif [ "$STATUS" == "904" ]; then
+    show_message CONNECTION_FAILED
+  elif [ "$STATUS" == "905" ]; then
+    show_message WEAK_SIGNAL
+  elif [ "$STATUS" == "906" ]; then
+    show_message CONNECTION_ERROR
+  fi
+}
+
+#========================
+# Вернуть статус ввиде строки
+sting_sim_status(){
+  local STATUS=$1
+  local LOG=$2
+  if [ "$STATUS" == "0" ]; then
+    if [ "$LOG" == "1" ]; then
+       show_message_log SIM_STATUS_0
+    else
+       show_message SIM_STATUS_0
+    fi
+  elif [ "$STATUS" == "1" ]; then
+    if [ "$LOG" == "1" ]; then
+       show_message_log SIM_STATUS_1
+    else
+       show_message SIM_STATUS_1
+    fi
+  elif [ "$STATUS" == "2" ]; then
+    if [ "$LOG" == "1" ]; then
+       show_message_log SIM_STATUS_2
+    else
+       show_message SIM_STATUS_2
+    fi
+  elif [ "$STATUS" == "3" ]; then
+    if [ "$LOG" == "1" ]; then
+       show_message_log SIM_STATUS_3
+    else
+       show_message SIM_STATUS_3
+    fi
+  elif [ "$STATUS" == "4" ]; then
+    if [ "$LOG" == "1" ]; then
+       show_message_log SIM_STATUS_4
+    else
+       show_message SIM_STATUS_4
+    fi
+  elif [ "$STATUS" == "240" ]; then
+    if [ "$LOG" == "1" ]; then
+       echo_log "${FC_2}ROMSIM${FC_0}"
+    else
+       echo -e "${FC_2}ROMSIM${FC_0}"
+    fi
+  elif [ "$STATUS" == "255" ]; then
+    if [ "$LOG" == "1" ]; then
+       show_message_log SIM_STATUS_255
+    else
+       show_message SIM_STATUS_255
+    fi
+  fi
+}
+
+#========================
+show_all_device_status() {
+   show_message_log ALL_DEVICE_STATUS "${INTERFACE}|
+                                       ${ConnectionStatus}|$(sting_connection_status ${ConnectionStatus})|
+                                       ${SimStatus}|$(sting_sim_status ${SimStatus})|
+                                       ${simlockStatus}|
+                                       ${SignalIcon}|$(signal_strength ${SignalIcon})|
+                                       ${PrimaryDns}|
+                                       ${SecondaryDns}|
+                                       ${ServiceStatus}|
+                                       ${RoamingStatus}|
+                                       ${CurrentNetworkType}|$(sting_current_network_type ${CurrentNetworkType})|
+                                       ${CurrentNetworkTypeEx}|$(sting_current_network_type ${CurrentNetworkTypeEx})|
+                                       ";
+}
+
+#===============================================
+# Проверить и поднять интерфейс
+interface_up(){
+  local INTERFACE=$1
+  local STATE_DOWN=`ip link show ${INTERFACE} | grep "state DOWN"`
+  if [ -n "$STATE_DOWN" ]; then
+     show_message_log INTERFACE_STATE_DOWN "${INTERFACE}"
+     `ip link set dev "${INTERFACE}" up`
+     echo "DOWN"
+  else
+     echo "UP"
+  fi
+}
+
+#=======================================
+ping_host() {
+  local HOST=$1
+  local INTERFACE=$2
+  if [ -z "${HOST}" ]; then
+     show_message_log NOT_ACCESS_HOST "x.x.x.x"
+     return 1
+  fi
+  res=1
+  /bin/ping -W 5 -I ${INTERFACE} ${HOST} -c 3 > /dev/null 2>&1 && res=0
+  if [ ${res} -ne 0 ]; then
+     show_message_log NOT_ACCESS_HOST "${HOST}"
+     return 1
+  else
+     return 0
+  fi
+}
+
+#===============================================
+# Для озвучивания событий
+sound_events() {
+   SOUND_EVENT=$1
+   if [ "${USE_SOUND}" != "1" ]; then
+     return 0
+   fi
+   if ! [ -d ${SOUND_DIR}/${AUDIO_THEME}/${lang} ]; then
+     show_message_log DIRECTORY_NOT_FOUND ${SOUND_DIR}/${AUDIO_THEME}/${lang}
+     return 1
+   fi
+   # Установка громкости звука
+   amixer set Master ${SOUND_LEVEL}% unmute
+   aplay -D ${DEVICE_NAME} ${SOUND_DIR}/${AUDIO_THEME}/${lang}/${SOUND_EVENT}.wav
+   if [ "$?" = 1 ]; then
+      show_message_log FAILED_PLAY_SOUND_EVENT
+      return 1;
+   else
+      return 0;
+   fi
+}
+
+#===============================================
+# Мониторинг состояния подключения
+connection_status_monitoring() {
+   local GATEWAY_IP="$1"
+   local INTERFACE="$2"
+   local LAST_STATUS_FILE=${LOG_PATH}'/'${INTERFACE}'.status'
+
+   # Проверим переменные из конфигурационного файла
+   if [ -z ${CONF_CYCLES_OFF_ON} ]; then
+      show_message_log VAR_NOT_SET CONF_CYCLES_OFF_ON
+      return 1
+   fi
+   if [ -z ${CONF_CYCLES_REBOOT} ]; then
+      show_message_log VAR_NOT_SET CONF_CYCLES_REBOOT
+      return 1
+   fi
+   if [ -z ${CONF_CYCLES_NO_SIM_CARD} ]; then
+      show_message_log VAR_NOT_SET CONF_CYCLES_NO_SIM_CARD
+      return 1
+   fi
+
+   # Загрузим значения из прошлого сеанса
+   if [ -f ${LAST_STATUS_FILE} ]; then
+      source ${LAST_STATUS_FILE}
+   fi
+   # Если в файле нет переменных создадим
+   if [ -z "${PING_CYCLES_OFF_ON}" ]; then
+      local PING_CYCLES_OFF_ON=0
+   fi
+   if [ -z "${PING_CYCLES_REBOOT}" ]; then
+      local PING_CYCLES_REBOOT=0
+   fi
+   if [ -z "${CYCLES_NO_SIM_CARD}" ]; then
+      local CYCLES_NO_SIM_CARD=0
+   fi
+   # Последний статус мобильного подключения
+   if [ -z "${LAST_MOBILE_CONNECTION_STATUS}" ]; then
+      local LAST_MOBILE_CONNECTION_STATUS=0
+   fi
+
+   if [ -z "${GATEWAY_IP}" ]; then
+      show_message_log ERROR_NOT_GATEWAY
+      return 1
+   fi
+   # Если в конфигурационном файле есть команда для выполнения
+   if ! [ -z ${CONF_CMD} ]; then
+      ${CONF_CMD}
+   fi
+
+   # для отладки ->
+   #SimStatus=1
+   #SignalIcon=3
+   #ConnectionStatus=901
+
+   # Если ConnectionStatus=901 то подключено
+   if [ "${ConnectionStatus}" == "901" ]; then
+      MOBILE_CONNECTION_STATUS=1
+   else
+      MOBILE_CONNECTION_STATUS=0
+   fi
+   echo 'LAST_MOBILE_CONNECTION_STATUS="'"${MOBILE_CONNECTION_STATUS}"'"' > ${LAST_STATUS_FILE}
+
+   # Проверка статуса сим карты
+   if [ "$SimStatus" != "1" ]; then
+      sting_sim_status "$SimStatus" "1"
+      if [ "$SimStatus" == "255" ]; then
+         sound_events no-sim-card
+         echo_log $INTERFACE
+         let "CYCLES_NO_SIM_CARD=${CYCLES_NO_SIM_CARD}+1"
+         sleep 2
+      fi
+      # Если нет сим карты попробуем перегрузить
+      if [ ${CYCLES_NO_SIM_CARD} -ge ${CONF_CYCLES_NO_SIM_CARD} ]; then
+         send_reboot_device "${GATEWAY_IP}"
+         sound_events sent-reboot-usb-network-card
+         echo 'CYCLES_NO_SIM_CARD="'"0"'"' >> ${LAST_STATUS_FILE}
+         echo 'PING_CYCLES_OFF_ON="'"${PING_CYCLES_OFF_ON}"'"' >> ${LAST_STATUS_FILE}
+         echo 'PING_CYCLES_REBOOT="'"${PING_CYCLES_REBOOT}"'"' >> ${LAST_STATUS_FILE}
+      else
+         echo 'CYCLES_NO_SIM_CARD="'"${CYCLES_NO_SIM_CARD}"'"' >> ${LAST_STATUS_FILE}
+         echo 'PING_CYCLES_OFF_ON="'"${PING_CYCLES_OFF_ON}"'"' >> ${LAST_STATUS_FILE}
+         echo 'PING_CYCLES_REBOOT="'"${PING_CYCLES_REBOOT}"'"' >> ${LAST_STATUS_FILE}
+      fi
+      # Если цикл больше 1 тогда запишем в лог
+      if [ ${CYCLES_NO_SIM_CARD} -gt 1 ] ; then
+         echo_log "CYCLES_NO_SIM_CARD=${CYCLES_NO_SIM_CARD}"
+      fi
+      # Если проблема с сим картой нет смысла идти дальше
+      return 0
+   fi
+   # Если изменился статус мобильного подключения
+   if [ ${LAST_MOBILE_CONNECTION_STATUS} -ne ${MOBILE_CONNECTION_STATUS} ]; then
+      if [ "${MOBILE_CONNECTION_STATUS}" == "1" ];then
+         sound_events mobile-connection-established
+      else
+         sound_events mobile-disconnected
+      fi
+   fi
+   # Если нужно озвучим низкий уровень сигнала
+   if ! [ -z "${LOW_SIGNAL_STRENGTH}" ]; then
+       if [ ${SignalIcon} -le ${LOW_SIGNAL_STRENGTH} ]; then
+          sound_events low-mobile-network-signal
+       fi
+   fi
+   # Если мобильное подключение нужно держать всегда включенным
+   if [ "$MOBILE_DATA_ALWAYS_ON" == "1" ]; then
+      if [ "${ConnectionStatus}" == "902" ]; then
+         set_on_device "${GATEWAY_IP}"
+         sleep 2
+      fi
+   fi
+   # Проверим доступность хоста указного в конфигурационном файле
+   show_message_log PING_HOST "${PING_HOST_INT}"
+   ping_host "${PING_HOST_INT}" "${INTERFACE}"
+   if [ "$?" = 1 ]; then
+      let "PING_CYCLES_OFF_ON=${PING_CYCLES_OFF_ON}+1"
+      let "PING_CYCLES_REBOOT=${PING_CYCLES_REBOOT}+1"
+   fi
+   # Если цикл больше 1 тогда запишем в лог
+   if [ ${PING_CYCLES_OFF_ON} -gt 1 ] ; then
+     echo_log "PING_CYCLES_OFF_ON=${PING_CYCLES_OFF_ON}"
+   fi
+   if [ ${PING_CYCLES_REBOOT} -gt 1 ] ; then
+     echo_log "PING_CYCLES_REBOOT=${PING_CYCLES_REBOOT}"
+   fi
+
+   echo_log "${ConnectionStatus} ${SimStatus} ${simlockStatus} ${SignalIcon} ${PrimaryDns} ${SecondaryDns} ${ServiceStatus} ${RoamingStatus} ${CurrentNetworkType} ${CurrentNetworkTypeEx}"
+   # Если пришло время перезапустить мобильное подключение
+   if [ ${PING_CYCLES_OFF_ON} -ge ${CONF_CYCLES_OFF_ON} ]; then
+      set_off_device "${GATEWAY_IP}"
+      sleep 2
+      set_on_device "${GATEWAY_IP}"
+      sound_events restart-mobile-data
+      echo 'CYCLES_NO_SIM_CARD="'"${CYCLES_NO_SIM_CARD}"'"' >> ${LAST_STATUS_FILE}
+      echo 'PING_CYCLES_OFF_ON="'"0"'"' >> ${LAST_STATUS_FILE}
+      echo 'PING_CYCLES_REBOOT="'"${PING_CYCLES_REBOOT}"'"' >> ${LAST_STATUS_FILE}
+      return 0
+   else
+      echo 'PING_CYCLES_OFF_ON="'"${PING_CYCLES_OFF_ON}"'"' >> ${LAST_STATUS_FILE}
+   fi
+   # Если пришло время перезагрузить
+   if [ ${PING_CYCLES_REBOOT} -ge ${CONF_CYCLES_REBOOT} ]; then
+      send_reboot_device "${GATEWAY_IP}"
+      sound_events sent-reboot-usb-network-card
+      echo 'CYCLES_NO_SIM_CARD="'"${CYCLES_NO_SIM_CARD}"'"' >> ${LAST_STATUS_FILE}
+      echo 'PING_CYCLES_OFF_ON="'"${PING_CYCLES_OFF_ON}"'"' >> ${LAST_STATUS_FILE}
+      echo 'PING_CYCLES_REBOOT="'"0"'"' >> ${LAST_STATUS_FILE}
+   else
+      echo 'PING_CYCLES_REBOOT="'"${PING_CYCLES_REBOOT}"'"' >> ${LAST_STATUS_FILE}
+   fi
+}
+
+#===============================================
+send_command() {
+  local INTERFACE=$2
+  # Если второго параметра нет делаем поиск в системе
+  if [ -z "${INTERFACE}" ]; then
+     # Найдем в системе USB сетевые карты Huawei и запишем в масив FIND_HUAWEI
+     find_huawei;
+     # Переберем сетевые карты
+     for INTERFACE in ${FIND_HUAWEI[@]} ; do
+        local dev_gateway=$(find_dev_gateway "${INTERFACE}");
+        if [ -z "${dev_gateway}" ]; then
+           show_message_log ERROR_NOT_GATEWAY
+           exit 1
+        fi
+        if [ "$(interface_up "${INTERFACE}")" == "DOWN" ]; then
+           continue
+        fi
+        ping_host "$dev_gateway" "$INTERFACE"
+        if [ "$?" = 1 ]; then
+           exit 1
+        fi
+        get_status "$dev_gateway";
+        if [ $1 == "-sa" ]; then
+           show_all_device_status
+        elif [ $1 == "-sc" ]; then
+           echo "${ConnectionStatus} ${SimStatus} ${simlockStatus} ${SignalIcon} ${PrimaryDns} ${SecondaryDns} ${ServiceStatus} ${RoamingStatus} ${CurrentNetworkType} ${CurrentNetworkTypeEx}"
+        elif [ $1 == "-r" ]; then
+           send_reboot_device "${dev_gateway}"
+        elif [ $1 == "-of" ]; then
+           set_off_device "${dev_gateway}"
+        elif [ $1 == "-on" ]; then
+           set_on_device "${dev_gateway}"
+        elif [ $1 == "-m" ]; then
+           connection_status_monitoring "${dev_gateway}" "${INTERFACE}"
+        fi
+     done
+  else
+     # Проверим существует ли интерфейс
+     ip link show ${INTERFACE} 2>/dev/null 1>/dev/null
+     if [ "$?" = 1 ]; then
+        show_message_log SYSTEM_NOT_NETWORK_INTERFACE "${INTERFACE}"
+        exit 1
+     fi
+     if [ "$(interface_up "${INTERFACE}")" == "DOWN" ]; then
+        exit 1
+     fi
+     local dev_gateway=$(find_dev_gateway "${INTERFACE}");
+     if [ -z "${dev_gateway}" ]; then
+        show_message_log ERROR_NOT_GATEWAY
+        exit 1
+     fi
+     ping_host "$dev_gateway" "$INTERFACE"
+     if [ "$?" = 1 ]; then
+        exit 1
+     fi
+     get_status "$dev_gateway";
+     if [ $1 == "-sa" ]; then
+        show_all_device_status
+     elif [ $1 == "-sc" ]; then
+        echo "${ConnectionStatus} ${SimStatus} ${simlockStatus} ${SignalIcon} ${PrimaryDns} ${SecondaryDns} ${ServiceStatus} ${RoamingStatus} ${CurrentNetworkType} ${CurrentNetworkTypeEx}"
+     elif [ $1 == "-r" ]; then
+        send_reboot_device "${dev_gateway}"
+     elif [ $1 == "-of" ]; then
+        set_off_device "${dev_gateway}"
+     elif [ $1 == "-on" ]; then
+        set_on_device "${dev_gateway}"
+     elif [ $1 == "-m" ]; then
+        connection_status_monitoring "${dev_gateway}" "${INTERFACE}"
+     fi
+  fi
+  #echo "$StatusAll";
+}
+
+#===============================================
+# Перезагрузить устройство
+send_reboot_device() {
+   GATEWAY_IP="$1"
+   if [ -z "${GATEWAY_IP}" ]; then
+      show_message_log ERROR_NOT_GATEWAY
+      exit 1;
+   fi
+   get_token "${GATEWAY_IP}"
+   show_message_log SENDING_REBOOT_COMMAND "${GATEWAY_IP}"
+   local RESULT=$(curl http://${GATEWAY_IP}/api/device/control \
+                  -H "Cookie: ${SesInfo}" \
+                  -H "__RequestVerificationToken: ${TokInfo}" \
+                  -H "Content-Type: application/x-www-form-urlencoded; charset=UTF-8" \
+                  -H "Referer: http://${GATEWAY_IP}/html/home.html" \
+                  --data "<?xml version=\"1.0\" encoding=\"UTF-8\"?><request><Control>1</Control></request>");
+   local RESULT_OK=$(echo "${RESULT}" | grep '<response>' | cut -d ">" -f2 | cut -d "<" -f1);
+   if  [ "${RESULT_OK}" != "OK"  ]; then
+      show_message_log ERROR_EXECUTING_COMMAND "$RESULT_OK"
+      exit 1
+   else
+      show_message_log COMMAND_COMPLETED_SUCCESSFULLY
+   fi
+}
+
+#===============================================
+# Отключить мобильную передачу данных
+set_off_device() {
+   GATEWAY_IP="$1"
+   if [ -z "${GATEWAY_IP}" ]; then
+      show_message_log ERROR_NOT_GATEWAY
+      exit 1;
+   fi
+   get_token "${GATEWAY_IP}"
+   show_message_log SENT_СOMMAND_DISABLE_MOBILE_DATA "${GATEWAY_IP}"
+   # отключаем соединение
+   local RESULT=$(curl http://${GATEWAY_IP}/api/dialup/mobile-dataswitch \
+                  -H "Cookie: ${SesInfo}" \
+                  -H "__RequestVerificationToken: ${TokInfo}" \
+                  -H "Content-Type: application/x-www-form-urlencoded; charset=UTF-8" \
+                  -H "Referer: http://${GATEWAY_IP}/html/home.html" \
+                  --data "<?xml version=\"1.0\" encoding=\"UTF-8\"?><request><dataswitch>0</dataswitch></request>");
+   local RESULT_OK=$(echo "${RESULT}" | grep '<response>' | cut -d ">" -f3 | cut -d "<" -f1);
+   if  [ "${RESULT_OK}" != "OK" ]; then
+      show_message_log ERROR_EXECUTING_COMMAND "$RESULT_OK"
+      exit 1
+   else
+      show_message_log COMMAND_COMPLETED_SUCCESSFULLY
+   fi
+}
+
+#===============================================
+# Включить мобильную передачу данных
+set_on_device() {
+   GATEWAY_IP="$1"
+   if [ -z "${GATEWAY_IP}" ]; then
+      show_message_log ERROR_NOT_GATEWAY
+      exit 1;
+   fi
+   get_token "${GATEWAY_IP}"
+   show_message_log SENT_СOMMAND_ON_MOBILE_DATA "${GATEWAY_IP}"
+   # включаем соединение
+   local RESULT=$(curl http://${GATEWAY_IP}/api/dialup/mobile-dataswitch \
+        -H "Cookie: ${SesInfo}" \
+        -H "__RequestVerificationToken: ${TokInfo}" \
+        -H "Content-Type: application/x-www-form-urlencoded; charset=UTF-8" \
+        -H "Referer: http://${GATEWAY_IP}/html/home.html" \
+        --data "<?xml version=\"1.0\" encoding=\"UTF-8\"?><request><dataswitch>1</dataswitch></request>");
+   local RESULT_OK=$(echo "${RESULT}" | grep '<response>' | cut -d ">" -f3 | cut -d "<" -f1);
+   if  [ "${RESULT_OK}" != "OK" ]; then
+      show_message_log ERROR_EXECUTING_COMMAND "$RESULT_OK"
+      exit 1
+   else
+      show_message_log COMMAND_COMPLETED_SUCCESSFULLY
+   fi
+}
+
+#========================
+set_options(){
+  while [ ! -z "$1" ]; do
+        case $1 in
+             -sa)
+                send_command $*
+                exit 0
+                ;;
+             -sc)
+                send_command $*
+                exit 0
+                ;;
+             -r)
+                send_command $*
+                exit 0
+                ;;
+             -of)
+                send_command $*
+                exit 0
+                ;;
+             -on)
+                send_command $*
+                exit 0
+                ;;
+             -m)
+                send_command $*
+                exit 0
+                ;;
+             -v)
+                show_message CURRENT_VERSION
+                exit 0
+                ;;
+             -h|--help)
+                show_message SHOW_USAGE
+                exit 0
+                ;;
+             *) show_message UNKNOWN_ARG $1
+                exit 1
+               ;;
+        esac
+        shift
+  done
+}
+
+#===============================================
+# Проверим есть ли линк
+check_link() {
+   export LIMIT=$1
+   for i in $(seq 0 $LIMIT); do
+       if ping -W 5 8.8.8.8 -c 1 >>  /dev/null; then
+          export LinkOFF=0
+          #uci set system.led_dsl.trigger='none'
+          #uci commit
+          #echo "none" > /sys/class/leds/tdw89x0:green:dsl/trigger
+          break;
+       else
+          logger "No internet connection. Wait..."
+          sleep 1
+      fi
+      export LinkOFF=1
+   done
+}
+
