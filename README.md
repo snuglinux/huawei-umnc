@@ -5,7 +5,7 @@ The program can be used in its scripts on routers and computers where the smooth
 
 to play sound messages can be used dependency 'alsa-utils'.
 
-Verified on Hhuawei E3372.
+Verified on Huawei E3372.
 
 Running the script in the monitoring role does the following:
 1. Check the status of the SIM card.
